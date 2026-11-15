@@ -1,0 +1,644 @@
+---
+title: "Mapping Air (Ine)quality"
+subtitle: "How demographics & socioeconomic status correspond with air pollution"
+author: "Steven Kerr"
+date: "13 May 2024"
+format: html
+theme: zephyr
+toc: true
+editor: visual
+bibliography: references.bib
+---
+
+# Introduction
+
+Environmental burdens such as air pollution are inequitably distributed, with disparities often rooted in economic and social structures. Here, I investigate the extent to which demographics and socioeconomic status correspond with higher levels of air pollution in Los Angeles County, California.
+
+**Summary.** A first spatial error model finds significant links between NO$_2$ and several demographic variables. Later sensitivity checks show that those links depend on how the spatial weights were built and disappear once distance to downtown and properly standardized weights are used. The data supports a narrower conclusion: NO$_2$ in July 2023 is organized mostly by location.
+
+# Setup
+
+Before we get started, we must first install and load all necessary dependencies. Since this analysis uses R and Python at different stages, ensuring that both run smoothly in a Quarto document involves some additional setup.
+
+## Load R Packages
+
+```{r}
+# Load packages
+pacman::p_load(
+  caret,       # classification & regression training
+  cowplot,     # combine multiple plots
+  dplyr,       # wrangle data
+  ggplot2,     # visualize data
+  ggspatial,   # spatial plots               
+  glue,        # expressive strings    
+  here,        # relative file paths
+  janitor,     # tidy data
+  kableExtra,  # HTML tables
+  knitr,       # dynamic report generation
+  patchwork,   # combine plots
+  purrr,       # functional programming
+  readr,       # import data
+  reticulate,  # python code
+  scales,      # plot scales
+  sf,          # simple features
+  stringr,     # character strings             
+  spatialreg,  # spatial regression
+  spdep,       # spatial dependency
+  stringr,     # character strings
+  terra,       # raster data  
+  tidycensus,  # US census data
+  tigris,      # spatial data
+  tmap,        # thematic maps
+  units        # units
+)
+```
+
+## Load Python Packages
+
+```{r}
+# Specify the path to Python version
+use_python(Sys.which("python3"), required = TRUE)
+```
+
+```{python}
+# Load packages
+import os                   # interact with file system
+import pandas as pd         # wrangle data
+from sentinelhub import (   # Sentinel Hub services:
+    SHConfig,               # configure Sentinel Hub credentials          
+    CRS,                    # coordinate reference system     
+    BBox,                   # bounding box      
+    DataCollection,         # satellite data                
+    MimeType,               # specify data format          
+    SentinelHubRequest      # API requests                     
+)
+```
+
+# Get Data
+
+## Demographic & Socioeconomic Data
+
+Census tract-level demographic and socioeconomic data for Los Angeles County is sourced from the U.S. Census Bureau's 2018-2022 American Community Survey. Socioeconomic variables include the estimated number of residents living below the poverty line, income per capita, median household income, median home value, and percentage of college graduates per census tract. Demographic variables comprise the number of residents who identify as white, black, Asian, and/or Hispanic. These racial and ethnic categories were selected since they represented the largest demographic categories in Los Angeles County [@demograp2024]. Further details on the variables used can be found [here](https://api.census.gov/data/2022/acs/acs1/spp/variables.html).
+
+To access the data, we require a U.S. Census API key which can be obtained [here](https://api.census.gov/data/key_signup.html).
+
+```{r}
+# Configure API key (if needed)
+if (Sys.getenv("CENSUS_API_KEY") == "") { 
+  census_api_key <- read_lines(here("api-keys/census-api-key.txt"))
+  census_api_key(census_api_key, install = TRUE)
+}
+
+# Cache shapefiles for future use
+options(tigris_use_cache = TRUE)
+```
+
+Once our API key is configured, we can query the data using the `{tidycensus}` package [@walker2024].
+
+```{r, warning=FALSE, message=FALSE}
+# Define variables
+vars <- c(
+  total_pop = "B01003_001E",            # total population                 
+  white = "B02001_002E",                # white population     
+  black = "B02001_003E",                # black population     
+  asian = "B02001_005E",                # Asian population     
+  hispanic = "B03002_012E",             # Hispanic population         
+  poverty_status = "B17001_002E",       # population below poverty line              
+  median_house_income = "B19013_001E",  # median household income                    
+  income_per_cap = "B19301_001E",       # income per capita               
+  median_value = "B25077_001E",         # median home value             
+  pct_college = "DP02_0068P"            # percentage with college degree          
+)
+
+# Load data
+la_county <- get_acs(
+  geography = "tract",
+  variables = vars,
+  year = 2022,
+  state = "CA",
+  county = "Los Angeles",
+  geometry = TRUE,
+  output = "wide"
+  ) |> 
+  clean_names() |> 
+  select(-ends_with("m")) |> # drop margin of error columns
+  rename_with(~str_remove(.x, "_e$")) |> # drop "_e" from end of variable names
+  filter(!geoid %in% c("06037599000", "06037599100")) |> # remove islands (Catalina & San Clemente)
+  relocate(geometry, .after = everything()) |> 
+  st_as_sf() # convert from tibble to data.frame to avoid issues with the row names in the predictions
+
+# Save data
+st_write(la_county, here("data/census/los-angeles-census-tracts.shp"), 
+         append = FALSE, quiet = TRUE)
+```
+
+We use the resulting geodata to determine the appropriate bounding box for Los Angeles County which will be used to download air quality data in the next step.
+
+```{r}
+# Create bounding box
+bbox <- la_county |> st_bbox() |> as.list() |> as.data.frame()
+
+# Save bounding box
+write_csv(bbox, here("data/output/los-angeles-bbox.csv")) 
+
+print(bbox)
+```
+
+## Air Pollution Data
+
+Nitrogen Dioxide ($NO^2$) is often produced by industrial activities and motor vehicle exhaust, with high concentrations being linked to respiratory problems [@whymeas]. As such, this analysis uses the average tropospheric $NO_2$ column density (mol/m²) as a proxy for air pollution. Note that this is a satellite measure of the whole air column, not a ground-level concentration in ppm. $NO^2$ data from July 2023 is sourced from the European Space Agency's (ESA) Sentinel-5P satellite [@sentinel].
+
+Before we can download the data, we must first configure our credentials for the Sentinel Hub through the [Copernicus Data Space Ecosystem](https://shapps.dataspace.copernicus.eu/dashboard/#/).
+
+```{python}
+# Load credentials from environment variables (SH_CLIENT_ID, SH_CLIENT_SECRET)
+sentinel_client_id = os.environ["SH_CLIENT_ID"]
+sentinel_client_secret = os.environ["SH_CLIENT_SECRET"]
+    
+# Configure Sentinel Hub Python profile
+config = SHConfig()
+config.sh_client_id = sentinel_client_id
+config.sh_client_secret = sentinel_client_secret 
+config.sh_base_url = "https://sh.dataspace.copernicus.eu"
+config.sh_token_url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+```
+
+Once our credentials are configured, we define the key parameters such as the bounding box and resolution level for our API query. Note that the Sentinel Hub limits the number of pixels returned by each query, so we have selected a level of resolution (expressed in degrees) that maximizes resolution given this constraint.
+
+```{python}
+# Load bounding box area
+bbox_df = pd.read_csv("../data/output/los-angeles-bbox.csv")
+
+# Extract bounding box coordinates
+bbox_row = bbox_df.iloc[0] 
+coordinates = [bbox_row['xmin'], bbox_row['ymin'], bbox_row['xmax'], bbox_row['ymax']]
+
+# Create a BBox object
+bbox = BBox(bbox=coordinates, crs=CRS.WGS84)
+
+# Resolution in degrees
+resolution_degrees = 0.005
+
+# Bounding box coordinates in WGS 84
+xmin, ymin, xmax, ymax = coordinates
+
+# Calculate width and height in degrees
+width_deg = xmax - xmin
+height_deg = ymax - ymin
+
+# Convert size from degrees to "pixels" (units at the given resolution)
+width_px = int(width_deg / resolution_degrees)
+height_px = int(height_deg / resolution_degrees)
+```
+
+We must also define an evalscript which specifies how the pixels are to be processed [@documenta]. Here, we take the average $NO^2$ for each pixel during July 2023.
+
+```{python}
+# Define eval script
+evalscript_raw = """
+//VERSION=3
+function setup() {
+  return {
+    // This specifies the bands that are looked at
+    // "dataMask" tells us whether or not there is data for a given tile
+    input: ["NO2", "dataMask"],
+    output: {
+      bands: 1,
+      sampleType: "FLOAT32" // data type to be returned
+    },
+    mosaicking: "ORBIT" // Will take all tiles over the specified period into account
+    };
+}
+
+function isClear(sample) {
+  return sample.dataMask == 1;
+}
+
+function sum(array) {
+  let sum = 0;
+  for (let i = 0; i < array.length; i++) {
+    sum += array[i].NO2;
+    }
+  return sum;
+}
+
+function evaluatePixel(samples) {
+  // Calculate mean of each pixel
+  const clearTs = samples.filter(isClear)
+  const mean = sum(clearTs) / clearTs.length
+  return [mean]
+}
+"""
+```
+
+Next, we construct our query using the evalscript and key parameters. Since the Sentinel Hub restricts the amount of data which can be freely downloaded each month, this process is only performed if the data has not already been downloaded.
+
+```{python}
+# Get data if not already downloaded
+if not os.path.exists("../data/copernicus/response.tiff"):
+  # Formulate API query
+  data_5p = DataCollection.SENTINEL5P.define_from("5p", service_url=config.sh_base_url)
+  
+  request_raw = SentinelHubRequest(
+    evalscript=evalscript_raw,
+    input_data=[
+        SentinelHubRequest.input_data(
+            data_collection=data_5p,
+            time_interval=("2023-07-01", "2023-07-31"), # July 2023
+        )
+    ],
+    responses=[SentinelHubRequest.output_response("default", MimeType.TIFF)],
+    bbox=bbox,
+    size=(width_px, height_px),
+    config=config,
+    data_folder="../data/copernicus/"
+    )
+    
+  # API request
+  raw_data = request_raw.get_data(save_data=True)
+```
+
+# Combine Data
+
+Next, both spatial datasets are combined and the average $NO_2$ column density (mol/m²) is calculated for each census tract. We use the coordinate reference system of the raster data in order to preserve its quality as best as possible.
+
+```{r, warning=FALSE, message=FALSE}
+# Load pollution data
+air_qual <- rast(here("data/copernicus/response.tiff"))
+names(air_qual) <- "avg_air_qual" # rename layer
+
+# Load US census data 
+la_county <- st_read(here("data/census/los-angeles-census-tracts.shp"))
+
+# Align vector data CRS with raster data CRS
+la_county <- st_transform(la_county, crs = st_crs(air_qual))
+
+# Calculate average air quality (NO2 column density, mol/m2) by neighborhood
+avg_air_qual <- extract(air_qual, la_county, fun = mean, na.rm = TRUE) 
+
+# Append average air quality to vector data
+la_county$avg_air_qual <- avg_air_qual$avg_air_qual
+
+df_with_na <- la_county |>
+  rename( # restore variable names
+    "total_pop" =  "totl_pp", 
+    "hispanic" = "hispanc",
+    "poverty_status" = "pvrty_s",
+    "median_household_income" = "mdn_hs_",
+    "income_per_cap" = "incm_p_",
+    "median_home_value" = "medn_vl",
+    "pct_college" = "pct_cll"
+  ) |> 
+  mutate(
+    pop_density = as.numeric(set_units(total_pop / st_area(geometry), "1/km2")),
+    pct_white = white / total_pop,
+    pct_black = black / total_pop,
+    pct_asian = asian / total_pop,
+    pct_hispanic = hispanic / total_pop,
+    poverty_rate = poverty_status / total_pop
+  ) |>
+  select(-total_pop, -white, -black, -asian, -hispanic, -poverty_status) |>
+  relocate(c(avg_air_qual, geometry), .after = everything())
+
+# Remove observations with missing data
+df <- df_with_na |> 
+  na.omit()
+
+# Add IDs to rows
+row.names(df) <- df$geoid
+```
+
+# Explore Data
+
+By mapping average $NO^2$ levels, we see that air pollution appears most highly concentrated in the southeast of Los Angeles County.
+
+```{r, echo=FALSE}
+# Map of vector data superimposed over raster data
+rast_df <- as.data.frame(air_qual, xy = TRUE)
+vect_df <- la_county |> st_boundary()
+p1 <- ggplot() +
+  geom_raster(data = rast_df, aes(x = x, y = y, fill = avg_air_qual)) +
+  geom_sf(data = vect_df, lwd = 0.2) +
+  scale_fill_gradient2(
+    low = "#91bfdb",
+    mid = "#ffffbf",
+    high = "#fc8d59",
+    na.value = "lightgrey",
+    midpoint = median(df$avg_air_qual, na.rm = TRUE),
+    labels = label_number(),
+    breaks =  breaks_pretty(6)
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = NULL, 
+  ) +
+  theme_void() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank()
+    )
+
+
+# Map of average air quality by census tract
+p2 <- df_with_na |>
+  ggplot() +
+  geom_sf(aes(fill = avg_air_qual), lwd = 0.2) +
+  scale_fill_gradient2(
+    low = "#91bfdb",
+    mid = "#ffffbf",
+    high = "#fc8d59",
+    na.value = "lightgrey",
+    midpoint = median(df$avg_air_qual, na.rm = TRUE),
+    labels = label_number(),
+    breaks = breaks_pretty(5)
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = expression(NO[2]*" (mol/"*m^2*")"),
+  ) +
+  theme_void() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank()
+  )
+
+# Combine plots
+p_combo <- p1 + p2 + plot_layout(guides = 'collect') &
+  plot_annotation(
+    title = "Los Angeles's Air Quality: Average NO2 levels in July 2023",
+    subtitle = "Left: Raster data | Right: Areal data",
+    caption = "Data sources: ESA Copernicus Sentinel Hub, U.S. Census Bureau"
+  )
+p_combo
+```
+
+Furthermore, average $NO^2$ appears to be fairly normally distributed across census tracts. Therefore, the normality assumption should hold.
+
+```{r, echo=FALSE}
+# Distribution of NO2 levels
+ggplot(df, aes(x = avg_air_qual)) +
+  geom_histogram(binwidth = .00001, fill = "#10477E", color = "black") +
+  scale_x_continuous(labels = label_number(), expand = expansion(), breaks = breaks_pretty()) +
+  scale_y_continuous(expand = expansion(), breaks = breaks_pretty()) +
+  labs(
+    title = expression("Distribution of average "*NO[2]*" across census tracts"),
+    subtitle = "Los Angeles County, July 2023",
+    x = "NO2 column density (mol/m²)",
+    y = "Count",
+    caption = "Data sources: ESA Copernicus Sentinel Hub, U.S. Census Bureau"
+  ) +
+  theme_classic()
+```
+
+Several patterns emerge when we map our socioeconomic variables. Higher levels of median household income, median home value, and percentage of residents with college degrees are more prevalent in southwest Los Angeles County. Perhaps unsurprisingly, the census tracts with the highest income per capita appear to be located in and around Beverly Hills and Bel-Air. Additionally, above average poverty rates appear to be concentrated in south Los Angeles and in the northeast of Los Angeles County. While not a socioeconomic variable, population density is fairly low throughout most census tracts with the exception of the areas in and around Downtown Los Angeles.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.width=10}
+tm1 <- tm_shape(df_with_na) + 
+  tm_polygons(fill = "median_household_income", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) +
+  tm_title(text = "Median household income") + 
+  tm_layout(legend.show = FALSE, frame = FALSE)
+tm2 <- tm_shape(df_with_na) + 
+  tm_polygons(fill = "income_per_cap", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) + 
+  tm_title(text = "Income per capita") + 
+  tm_layout(legend.show = FALSE, frame = FALSE)
+tm3 <- tm_shape(df_with_na) + 
+  tm_polygons(fill = "median_home_value", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) + 
+  tm_title(text = "Median home value") + 
+  tm_layout(legend.show = FALSE, frame = FALSE)
+tm4 <- tm_shape(df_with_na) + 
+  tm_polygons(fill = "poverty_rate", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) + 
+  tm_title(text = "Poverty rate") + 
+  tm_layout(legend.show = FALSE, frame = FALSE)
+tm5 <- tm_shape(df_with_na) + 
+  tm_polygons(fill = "pct_college", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) + 
+  tm_title(text = "Percentage with college degree") + 
+  tm_layout(legend.show = FALSE, frame = FALSE)
+tm6 <- tm_shape(df_with_na) +
+  tm_polygons(fill = "pop_density", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) + 
+  tm_title(text = "Population density") + 
+  tm_layout(legend.show = FALSE, frame = FALSE)
+
+tm_combo1 <- tmap_arrange(tm1, tm2, tm3, tm4, tm5, tm6)
+tm_combo1
+```
+
+With respect to demographic characteristics, the share of white residents is highest outside of southeast Los Angeles. High shares of black residents are concentrated mainly in south Los Angeles and high shares of Asian residents are primarily found in southeast Los Angeles County. Lastly, high shares of Hispanic residents are found in southeast Los Angeles, the San Fernando Valley, and in the northeast of Los Angeles County.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.width=10}
+tm7 <- tm_shape(df_with_na) + 
+  tm_polygons(fill = "pct_white", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) +
+  tm_title(text = "Percentage white") +  
+  tm_layout(legend.show = FALSE, frame = FALSE)
+tm8 <- tm_shape(df_with_na) + 
+  tm_polygons(fill = "pct_black", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) +
+  tm_title(text = "Percentage black") + 
+  tm_layout(legend.show = FALSE, frame = FALSE)
+tm9 <- tm_shape(df_with_na) + 
+  tm_polygons(fill = "pct_asian", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) + 
+  tm_title(text = "Percentage Asian") +
+  tm_layout(legend.show = FALSE, frame = FALSE)
+tm10 <- tm_shape(df_with_na) +
+  tm_polygons(fill = "pct_hispanic", fill.scale = tm_scale(values = "-rd_bu"), lwd = 0.05) +
+  tm_title(text = "Percentage Hispanic") +
+  tm_layout(legend.show = FALSE, frame = FALSE)
+
+tm_combo2 <- tmap_arrange(tm7, tm8, tm9, tm10)
+tm_combo2
+```
+
+# Analysis
+
+Before proceeding with our analysis, we check for multicollinearity among the independent variables that we intend to include in our model.
+
+```{r}
+# Calculate correlation matrix
+cor_matrix <- df |>
+  st_drop_geometry() |>
+  select(-geoid, -name, -avg_air_qual) |>
+  cor()
+
+# Format table
+kable(cor_matrix, format = "html", title = "Correlation Matrix") |> 
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed")) |> 
+  scroll_box(width = "100%", height = "500px")
+```
+
+To prevent multicollinearity from potentially impacting our models, we remove variables with pair-wise correlations above 0.65. The remaining socioeconomic variables include `median_home_value` and `poverty_rate` and the remaining demographic variables include `pct_white`, `pct_black`, `pct_asian`, and `pct_hispanic`. Additionally, `pop_density` is included since it may represent another driver of air pollution.
+
+```{r}
+multicol_vars <- findCorrelation(cor_matrix, cutoff = 0.65)
+include_vars <- colnames(cor_matrix)[-multicol_vars]
+print(include_vars)
+```
+
+## Develop Baseline Model
+
+Next, we use linear regression to model the relationship between socioeconomic as well as demographic variables and air pollution. This model does not take spatial information into account and will serve as our baseline model.
+
+```{r}
+# Initial regression model to serve as baseline
+ind_vars <- paste0(include_vars, collapse = " + ")
+formula <- as.formula(glue("avg_air_qual ~ {ind_vars}"))
+linear_model <- lm(formula = formula, data = df)
+summary(linear_model) 
+```
+
+## Spatial Autocorrelation
+
+To determine whether the model's performance depends on geography, we perform a Moran's $I$ test to check for autocorrelation in the residuals. Spatial weights for neighbors are obtained by applying inverse distance weighting to the 100-nearest neighbors for each census tract.
+
+```{r, warning=FALSE, message=FALSE}
+# Get centroids
+centroid_coords <- st_centroid(df)
+
+# Create list of neighbors
+neighbors_list <- knn2nb(knearneigh(centroid_coords, k = 100)) # 100-nearest neighbors
+
+# Get distance for all spatial neighbor links
+dists <- nbdists(neighbors_list, centroid_coords)
+
+# Compute inverted distances
+p <- 2
+epsilon <- 0.0001
+inverted_dists <- lapply(dists, function(x){1/(x^p + epsilon)})
+
+# Get spatial weights for neighbours lists
+wts <- nb2listw(neighbors_list, glist = inverted_dists, style = "B") # inverse distance weights
+
+# Use Moran's I test to see if there is still autocorrelation in our residuals
+moran.test(linear_model$residuals, wts)
+```
+
+The Moran’s $I$ test statistic is moderately strong and positive (0.72) and is statistically significant (p-value \< 0.001). Therefore, it is appropriate to use models that can account for spatial autocorrelation.
+
+```{r, message=FALSE, warning=FALSE}
+# Get residuals and lagged residuals
+residuals_linear_model <- residuals(linear_model)
+lagged_residuals_linear_model <- lag.listw(wts, residuals_linear_model)
+res <- data.frame("lagged_residuals" = lagged_residuals_linear_model, "residuals" = residuals_linear_model)
+
+# Plot residuals vs. lagged residuals
+ggplot(res, aes(x = residuals, y = lagged_residuals)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", color = "red") +
+  scale_x_continuous(labels = label_number(), breaks = breaks_pretty()) +
+  scale_y_continuous(labels = label_number(), breaks = breaks_pretty()) + 
+  labs(
+    x = "Residuals",
+    y = "Lagged residuals"
+  ) +
+  theme_classic()
+```
+
+## Spatial Regression
+
+### Spatially lagged X model
+
+The spatially lagged X model produces coefficient estimates for both the covariates and lagged covariates.
+
+```{r}
+slx_model <- lmSLX(formula, data = df, listw = wts, zero.policy = TRUE)
+summary(slx_model)
+```
+
+Furthermore, the spatially lagged X model allows us to decompose these coefficient estimates into their direct and indirect impacts.
+
+```{r}
+# Look at direct and indirect impacts
+summary(impacts(slx_model))
+```
+
+To test whether the spatially lagged X model accounts for autocorrelation in the residuals, we once again perform the Moran’s $I$ test.
+
+```{r}
+moran.test(slx_model$residuals, wts)
+```
+
+Surprisingly, Moran’s $I$ is greater with the spatially lagged X model than the linear regression model (0.73 vs. 0.72). Moreover, the model still demonstrates significant autocorrelation, leading us to believe that the spatially lagged X model does not sufficiently capture the spatial dependence present in the data.
+
+### Spatial error model
+
+The spatial error model includes a spatial lag in the model's error term in order to capture latent spatial processes that are not already accounted for in the model estimation and, as a result, appear in the model's residuals.
+
+```{r}
+error_model <- errorsarlm(
+  formula = formula,
+  data = df,
+  listw = wts
+)
+summary(error_model, Nagelkerke = TRUE)
+```
+
+Once again, we apply the Moran's $I$ test to check for persistent autocorrelation in the residuals.
+
+```{r}
+moran.test(error_model$residuals, wts)
+```
+
+Moran's $I$ is still moderately strong and positive (0.47), although lower than for the other models. This number is less alarming than it looks, because it tests unfiltered residuals under unnormalized weights. The sensitivity checks below revisit it.
+
+## Evaluate Model Fit
+
+We evaluate the fit of our models using the Akaike Information Criterion (AIC).
+
+```{r}
+aic_results <- AIC(linear_model, slx_model, error_model)
+
+kable(aic_results, format = "html", caption = "AIC Comparisons for Models") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+Among these three models and these weights, the spatial error model receives the lowest AIC. The sensitivity checks below test whether that choice, and the coefficients it produces, hold up.
+
+# Sensitivity Checks
+
+The spatial weights above are unnormalized (`style = "B"`) and use 100 nearest neighbors. That choice also makes a spatial lag model fail with a singular matrix. The script `code/04b-spatial-model-checks.R` compares several alternatives. It uses row-standardized weights, adds distance to downtown Los Angeles as a location term, and standardizes the predictors. It also tests the filtered residuals of the error model, which is the correct test for that model type. The results are stored in `data/output/`.
+
+```{r, message=FALSE}
+comparison <- read_csv(here("data/output/spatial-model-comparison.csv"), show_col_types = FALSE)
+coefs <- read_csv(here("data/output/spatial-model-coefficients.csv"), show_col_types = FALSE)
+
+comparison |>
+  filter(specification == "base", !is.na(lambda)) |>
+  transmute(
+    Weights = weights,
+    `Moran's I, linear model` = round(moran_ols, 2),
+    `Moran's I, error model (filtered)` = round(moran_sem_filtered, 2),
+    Lambda = round(lambda, 3)
+  ) |>
+  kable(format = "html", caption = "Residual autocorrelation by choice of spatial weights") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+With row-standardized weights and 8 nearest neighbors, the filtered residuals show almost no remaining autocorrelation. The 0.47 reported above was mostly an artifact of the weights and of testing unfiltered residuals. Two cautions apply. First, $\lambda$ is about 0.99 for every choice of weights, so the error term absorbs nearly the whole NO$_2$ surface and the pseudo-$R^2$ of 0.99 says little about explanatory power. Second, queen contiguity overcorrects, with a filtered Moran's $I$ of about -0.29.
+
+Adding distance to downtown improves fit more than any other change. It lowers the linear model's AIC from 10,633 to 9,048 and the spatial error model's from 875 to 443. A spatial Durbin error model has the lowest AIC (338), and Lagrange multiplier tests favor an error model over a lag model.
+
+```{r}
+coefs |>
+  filter(term != "(Intercept)") |>
+  transmute(
+    Model = model,
+    Term = term,
+    Estimate = round(estimate, 3),
+    `p-value` = signif(p_value, 2)
+  ) |>
+  kable(format = "html", caption = "Coefficients (standardized predictors, NO2 in units of 1e-5 mol/m2, 8-neighbor row-standardized weights)") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) |>
+  scroll_box(width = "100%", height = "500px")
+```
+
+In a linear model, the shares of Asian and Hispanic residents and median home value are strongly associated with NO$_2$. Once a spatial error structure is estimated with row-standardized weights, those associations are no longer significant, with or without the distance term. The one exception is median home value, which turns slightly negative.
+
+# Discussion
+
+The first spatial error model suggested that higher median home values, population density and shares of Black, Asian and Hispanic residents go with higher NO$_2$, and that higher poverty goes with lower NO$_2$. The sensitivity checks do not support that reading. The significant coefficients came from unnormalized weights. With properly standardized weights, the demographic coefficients lose significance, and distance to downtown is by far the strongest predictor.
+
+The data supports a narrower claim. NO$_2$ in July 2023 is organized mostly by location, with a hotspot in the central and eastern part of the county, and tract-level demographics add little once location is accounted for. This does not show that demographics are unrelated to exposure. Demographic groups are themselves clustered in space, so location and demographics are hard to separate, and the satellite data is too coarse to detect small differences between neighboring tracts.
+
+This analysis has several limitations. The NO$_2$ measure is a satellite column density in mol/m$^2$, not a ground-level concentration, and its native footprint is several kilometers, so tract-to-tract differences are smoothed. July 2023 is a single month, which is not a measure of annual exposure. The models contain no traffic, industry or land-use data, and the analysis covers Los Angeles County only. Tract averages say nothing about individuals. Finally, $\lambda$ sits near its upper bound in every specification, so the coefficient estimates depend heavily on the weights.
+
+Future work could test geographically weighted regression, add distance to freeways, ports and the coast, and use ground monitors or a finer NO$_2$ product. Repeating the analysis for several months or years would also show whether the pattern is stable.

@@ -48,14 +48,15 @@ ggplot(df, aes(x = avg_air_qual)) +
   scale_x_continuous(labels = label_number(), expand = expansion(), breaks = pretty_breaks()) +
   scale_y_continuous(expand = expansion(), breaks = pretty_breaks()) +
   labs(
-    #title = "Distribution of average NO2 amongst census tracts",
-    #subtitle = "Los Angeles, Jan 2023",
-    x = NULL, #"NO2 (mol/m2)",
-    y = NULL #"Count"
+    title = expression("Distribution of average "*NO[2]*" across census tracts"),
+    subtitle = "Los Angeles County, July 2023",
+    x = "NO2 column density (mol/m²)",
+    y = "Count",
+    caption = "Data sources: ESA Copernicus Sentinel-5P, U.S. Census Bureau"
   ) +
   theme_classic() 
 
-ggsave(here("figures/histogram-los-angeles-air-quality.png"), height = 5, width = 7.5, dpi = 300)
+ggsave(here("figures/no2-histogram.png"), height = 5, width = 7.5, dpi = 300, bg = "white")
 
 
 # Map of vector data superimposed over raster data (from 1 day)
@@ -86,7 +87,7 @@ p1 <- ggplot() +
     axis.text.x = element_blank(), #element_text(angle = 45, vjust = 0.5, hjust = 0.5),
     axis.text.y = element_blank()  #element_text()
   )
-ggsave(here("figures/map-los-angeles-air-quality-tiles-day.png"))
+ggsave(here("figures/no2-raster-day.png"), bg = "white")
 
 
 # Map of vector data superimposed over raster data (from 1 week)
@@ -118,7 +119,7 @@ p2 <- ggplot() +
     axis.text.y = element_blank()
   )
 
-ggsave(here("figures/map-los-angeles-air-quality-tiles-week.png"))
+ggsave(here("figures/no2-raster-week.png"), bg = "white")
 
 
 ###
@@ -153,7 +154,7 @@ p3 <- ggplot() +
     axis.text.y = element_blank() #element_text()
     )
 
-ggsave(here("figures/map-los-angeles-air-quality-tiles.png"))
+ggsave(here("figures/no2-raster-month.png"), bg = "white")
 
 
 # Map of average air quality by census tract 
@@ -184,7 +185,7 @@ p4 <- la_county |>
     axis.text.y = element_text()
   )
 
-ggsave(here("figures/map-los-angeles-air-quality-areal.png"))
+ggsave(here("figures/no2-by-census-tract.png"), bg = "white")
 
 # Combine maps into single plot
 library(cowplot)
@@ -220,9 +221,9 @@ final_plot_with_labels <- plot_grid(
 print(final_plot_with_labels)
 
 ggsave(
-  here("figures/map-los-angeles-air-quality.png"), 
+  here("figures/no2-combined-maps.png"), 
   final_plot_with_labels, 
-  width = 10, height = 8, dpi = 300
+  width = 10, height = 8, dpi = 300, bg = "white"
   )
 
 ###

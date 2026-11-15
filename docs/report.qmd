@@ -56,11 +56,13 @@ pacman::p_load(
 ## Load Python Packages
 
 ```{r}
+#| eval: false
 # Specify the path to Python version
 use_python(Sys.which("python3"), required = TRUE)
 ```
 
 ```{python}
+#| eval: false
 # Load packages
 import os                   # interact with file system
 import pandas as pd         # wrangle data
@@ -76,6 +78,8 @@ from sentinelhub import (   # Sentinel Hub services:
 
 # Get Data
 
+> **Note:** the code in this section (Census API request, Sentinel Hub request and the Python setup) is shown but not run when the report is rendered. The downloaded data is already stored in `data/census/` and `data/copernicus/`, so rendering needs no API keys and no Python. To download the data again, run `code/01-get-census-data.R` and `code/02-get-no2-data.py` with the credentials described in the README.
+
 ## Demographic & Socioeconomic Data
 
 Census tract-level demographic and socioeconomic data for Los Angeles County is sourced from the U.S. Census Bureau's 2018-2022 American Community Survey. Socioeconomic variables include the estimated number of residents living below the poverty line, income per capita, median household income, median home value, and percentage of college graduates per census tract. Demographic variables comprise the number of residents who identify as white, black, Asian, and/or Hispanic. These racial and ethnic categories were selected since they represented the largest demographic categories in Los Angeles County [@demograp2024]. Further details on the variables used can be found [here](https://api.census.gov/data/2022/acs/acs1/spp/variables.html).
@@ -83,6 +87,7 @@ Census tract-level demographic and socioeconomic data for Los Angeles County is 
 To access the data, we require a U.S. Census API key which can be obtained [here](https://api.census.gov/data/key_signup.html).
 
 ```{r}
+#| eval: false
 # Configure API key (if needed)
 if (Sys.getenv("CENSUS_API_KEY") == "") { 
   census_api_key <- read_lines(here("api-keys/census-api-key.txt"))
@@ -96,6 +101,7 @@ options(tigris_use_cache = TRUE)
 Once our API key is configured, we can query the data using the `{tidycensus}` package [@walker2024].
 
 ```{r, warning=FALSE, message=FALSE}
+#| eval: false
 # Define variables
 vars <- c(
   total_pop = "B01003_001E",            # total population                 
@@ -135,6 +141,7 @@ st_write(la_county, here("data/census/los-angeles-census-tracts.shp"),
 We use the resulting geodata to determine the appropriate bounding box for Los Angeles County which will be used to download air quality data in the next step.
 
 ```{r}
+#| eval: false
 # Create bounding box
 bbox <- la_county |> st_bbox() |> as.list() |> as.data.frame()
 
@@ -151,6 +158,7 @@ Nitrogen Dioxide ($NO^2$) is often produced by industrial activities and motor v
 Before we can download the data, we must first configure our credentials for the Sentinel Hub through the [Copernicus Data Space Ecosystem](https://shapps.dataspace.copernicus.eu/dashboard/#/).
 
 ```{python}
+#| eval: false
 # Load credentials from environment variables (SH_CLIENT_ID, SH_CLIENT_SECRET)
 sentinel_client_id = os.environ["SH_CLIENT_ID"]
 sentinel_client_secret = os.environ["SH_CLIENT_SECRET"]
@@ -166,6 +174,7 @@ config.sh_token_url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE
 Once our credentials are configured, we define the key parameters such as the bounding box and resolution level for our API query. Note that the Sentinel Hub limits the number of pixels returned by each query, so we have selected a level of resolution (expressed in degrees) that maximizes resolution given this constraint.
 
 ```{python}
+#| eval: false
 # Load bounding box area
 bbox_df = pd.read_csv("../data/output/los-angeles-bbox.csv")
 
@@ -194,6 +203,7 @@ height_px = int(height_deg / resolution_degrees)
 We must also define an evalscript which specifies how the pixels are to be processed [@documenta]. Here, we take the average $NO^2$ for each pixel during July 2023.
 
 ```{python}
+#| eval: false
 # Define eval script
 evalscript_raw = """
 //VERSION=3
@@ -234,6 +244,7 @@ function evaluatePixel(samples) {
 Next, we construct our query using the evalscript and key parameters. Since the Sentinel Hub restricts the amount of data which can be freely downloaded each month, this process is only performed if the data has not already been downloaded.
 
 ```{python}
+#| eval: false
 # Get data if not already downloaded
 if not os.path.exists("../data/copernicus/response.tiff"):
   # Formulate API query

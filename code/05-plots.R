@@ -48,10 +48,11 @@ ggplot(df, aes(x = avg_air_qual)) +
   scale_x_continuous(labels = label_number(), expand = expansion(), breaks = pretty_breaks()) +
   scale_y_continuous(expand = expansion(), breaks = pretty_breaks()) +
   labs(
-    #title = "Distribution of average NO2 amongst census tracts",
-    #subtitle = "Los Angeles, Jan 2023",
-    x = NULL, #"NO2 (mol/m2)",
-    y = NULL #"Count"
+    title = expression("Distribution of average "*NO[2]*" across census tracts"),
+    subtitle = "Los Angeles County, July 2023",
+    x = "NO2 column density (mol/m²)",
+    y = "Count",
+    caption = "Data sources: ESA Copernicus Sentinel-5P, U.S. Census Bureau"
   ) +
   theme_classic() 
 

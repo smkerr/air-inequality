@@ -14,6 +14,8 @@ bibliography: references.bib
 
 Environmental burdens such as air pollution are inequitably distributed, with disparities often rooted in economic and social structures. Here, I investigate the extent to which demographics and socioeconomic status correspond with higher levels of air pollution in Los Angeles County, California.
 
+**Summary.** A first spatial error model finds significant links between NO$_2$ and several demographic variables. Later sensitivity checks show that those links depend on how the spatial weights were built and disappear once distance to downtown and properly standardized weights are used. The data supports a narrower conclusion: NO$_2$ in July 2023 is organized mostly by location.
+
 # Setup
 
 Before we get started, we must first install and load all necessary dependencies. Since this analysis uses R and Python at different stages, ensuring that both run smoothly in a Quarto document involves some additional setup.
@@ -576,7 +578,7 @@ Once again, we apply the Moran's $I$ test to check for persistent autocorrelatio
 moran.test(error_model$residuals, wts)
 ```
 
-Notably, Moran's $I$ is still moderately strong and positive (0.47), however the observed value is substantially lower than the estimates obtained using the other models.
+Moran's $I$ is still moderately strong and positive (0.47), although lower than for the other models. This number is less alarming than it looks, because it tests unfiltered residuals under unnormalized weights. The sensitivity checks below revisit it.
 
 ## Evaluate Model Fit
 
@@ -589,16 +591,54 @@ kable(aic_results, format = "html", caption = "AIC Comparisons for Models") |>
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
 
-Given that the spatial error model receives the lowest AIC, we consider it to be the model of best fit.
+Among these three models and these weights, the spatial error model receives the lowest AIC. The sensitivity checks below test whether that choice, and the coefficients it produces, hold up.
+
+# Sensitivity Checks
+
+The spatial weights above are unnormalized (`style = "B"`) and use 100 nearest neighbors. That choice also makes a spatial lag model fail with a singular matrix. The script `code/04b-spatial-model-checks.R` compares several alternatives. It uses row-standardized weights, adds distance to downtown Los Angeles as a location term, and standardizes the predictors. It also tests the filtered residuals of the error model, which is the correct test for that model type. The results are stored in `data/output/`.
+
+```{r, message=FALSE}
+comparison <- read_csv(here("data/output/spatial-model-comparison.csv"), show_col_types = FALSE)
+coefs <- read_csv(here("data/output/spatial-model-coefficients.csv"), show_col_types = FALSE)
+
+comparison |>
+  filter(specification == "base", !is.na(lambda)) |>
+  transmute(
+    Weights = weights,
+    `Moran's I, linear model` = round(moran_ols, 2),
+    `Moran's I, error model (filtered)` = round(moran_sem_filtered, 2),
+    Lambda = round(lambda, 3)
+  ) |>
+  kable(format = "html", caption = "Residual autocorrelation by choice of spatial weights") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+With row-standardized weights and 8 nearest neighbors, the filtered residuals show almost no remaining autocorrelation. The 0.47 reported above was mostly an artifact of the weights and of testing unfiltered residuals. Two cautions apply. First, $\lambda$ is about 0.99 for every choice of weights, so the error term absorbs nearly the whole NO$_2$ surface and the pseudo-$R^2$ of 0.99 says little about explanatory power. Second, queen contiguity overcorrects, with a filtered Moran's $I$ of about -0.29.
+
+Adding distance to downtown improves fit more than any other change. It lowers the linear model's AIC from 10,633 to 9,048 and the spatial error model's from 875 to 443. A spatial Durbin error model has the lowest AIC (338), and Lagrange multiplier tests favor an error model over a lag model.
+
+```{r}
+coefs |>
+  filter(term != "(Intercept)") |>
+  transmute(
+    Model = model,
+    Term = term,
+    Estimate = round(estimate, 3),
+    `p-value` = signif(p_value, 2)
+  ) |>
+  kable(format = "html", caption = "Coefficients (standardized predictors, NO2 in units of 1e-5 mol/m2, 8-neighbor row-standardized weights)") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) |>
+  scroll_box(width = "100%", height = "500px")
+```
+
+In a linear model, the shares of Asian and Hispanic residents and median home value are strongly associated with NO$_2$. Once a spatial error structure is estimated with row-standardized weights, those associations are no longer significant, with or without the distance term. The one exception is median home value, which turns slightly negative.
 
 # Discussion
 
-> **Update:** later sensitivity checks (`code/04b-spatial-model-checks.R`, summarized in the repository README) show that the demographic associations below depend on the unnormalized spatial weights used here. With row-standardized weights and a distance-to-downtown term they are no longer significant. Read this section as exploratory.
+The first spatial error model suggested that higher median home values, population density and shares of Black, Asian and Hispanic residents go with higher NO$_2$, and that higher poverty goes with lower NO$_2$. The sensitivity checks do not support that reading. The significant coefficients came from unnormalized weights. With properly standardized weights, the demographic coefficients lose significance, and distance to downtown is by far the strongest predictor.
 
-The spatial error model is assessed to be the model of best fit. This model estimates a positive and statistically significant relationship between air pollution and median home values (p-value \< 0.001), population density (p-value \< 0.001), the share of black residents (p-value \< 0.01), the share of Asian residents (p-value \< 0.001), and the share of Hispanic residents (p-value \< 0.001). A negative and statistically significant relationship between air pollution and poverty rate also exists at a significance level of $\alpha$ = 0.05 (p-value \< 0.05). Finally, the model did not find a statistically significant relationship between air pollution and the share of white residents (p-value = 0.324).
+The data supports a narrower claim. NO$_2$ in July 2023 is organized mostly by location, with a hotspot in the central and eastern part of the county, and tract-level demographics add little once location is accounted for. This does not show that demographics are unrelated to exposure. Demographic groups are themselves clustered in space, so location and demographics are hard to separate, and the satellite data is too coarse to detect small differences between neighboring tracts.
 
-The significant positive $\lambda$ value (0.029, p-value \< 0.001) confirms the presence of spatial autocorrelation, justifying the use of a spatial model over a standard linear regression model. Furthermore, a Nagelkerke pseudo-$R^2$ value of 0.65 suggests that the model explains a substantial portion of the variance in air quality. These findings reveal significant correlations between socioeconomic as well as demographic factors and air pollution levels across Los Angeles County, underscoring the interconnected nature of social inequities and environmental hazards.
+This analysis has several limitations. The NO$_2$ measure is a satellite column density in mol/m$^2$, not a ground-level concentration, and its native footprint is several kilometers, so tract-to-tract differences are smoothed. July 2023 is a single month, which is not a measure of annual exposure. The models contain no traffic, industry or land-use data, and the analysis covers Los Angeles County only. Tract averages say nothing about individuals. Finally, $\lambda$ sits near its upper bound in every specification, so the coefficient estimates depend heavily on the weights.
 
-This analysis has several limitations. First, the context is specific to Los Angeles County, with further research required to determine whether similar patterns exist in other major U.S. metropolitan areas. With the exception of population density, the models used in this analysis rely solely on socioeconomic and demographic variables. It does not take other factors that may contribute to air pollution into consideration such as traffic patterns. Furthermore, we use $NO_2$ column density as a proxy for air pollution when it may be appropriate to examine other types of air pollution measures, including some combination of different measures. Additionally, this analysis only compares the performance of three types of models, namely linear regression, spatially lagged X linear regression, and spatial error regression. Future work could test the performance of more complex spatial models. It is also worth noting that $NO^2$ appears to be highly concentrated in areas near Downtown Los Angeles. As such, it may be appropriate to include a variable in the model that represents the distance between the center point of a given census tract from Downtown Los Angeles since this may explain a substantial portion of differences in air quality.
-
-Future research should aim to validate these relationships and explore the mechanisms driving these associations, including the potential role of urban planning, industrial activity, and transportation patterns. Additionally, longitudinal studies could examine how these relationships evolve over time, especially in the context of policy interventions and urban development.
+Future work could test geographically weighted regression, add distance to freeways, ports and the coast, and use ground monitors or a finer NO$_2$ product. Repeating the analysis for several months or years would also show whether the pattern is stable.

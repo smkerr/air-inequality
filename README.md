@@ -2,6 +2,8 @@
 
 **Do neighborhoods with different demographics and incomes breathe different air?** This project combines satellite pollution data with U.S. Census data for 2,334 census tracts in Los Angeles County and tests the link with spatial regression.
 
+**Short version:** a first model finds significant links between NO₂ and several demographic groups. Sensitivity checks show those links depend on how the spatial weights are built and disappear under standardized weights. NO₂ in July 2023 is organized mostly by location, with a hotspot in the central and eastern county.
+
 ![Los Angeles skyline under a smog layer, seen from the Hollywood Freeway](figures/los-angeles-smog-skyline.jpg)
 
 *Downtown Los Angeles under its smog layer. Photo: ["Hollywood Freeway 101"](https://commons.wikimedia.org/wiki/File:Hollywood_Freeway_101_%2829751413541%29.jpg) by Prayitno, [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/), via Wikimedia Commons. Resized from the original.*
@@ -18,6 +20,7 @@
 | Requesting and processing satellite rasters | `code/02-get-no2-data.py` (Sentinel Hub API, custom evalscript) |
 | Joining raster and vector data (zonal statistics, CRS alignment) | `code/03-combine-spatial-data.R` (`terra`, `sf`) |
 | Spatial weights, Moran's *I*, SLX and spatial error models | `code/04-spatial-regression.R` (`spdep`, `spatialreg`) |
+| Testing whether the results hold up (weights, location term, lag, error and Durbin models) | `code/04b-spatial-model-checks.R` |
 | Cartography and figures | `code/05-plots.R`, `figures/` |
 | Reproducible write-up in R and Python | `docs/report.qmd` (Quarto) |
 
@@ -33,10 +36,11 @@
 3. Fit a linear baseline model.
 4. Build inverse distance spatial weights from the 100 nearest tract centroids and test the residuals with Moran's *I*.
 5. Fit a spatially lagged X (SLX) model and a spatial error model, and compare them by AIC.
+6. Repeat with row-standardized weights (8 and 15 neighbors, queen contiguity), add distance to downtown, test filtered residuals, and fit lag, error and Durbin models.
 
 ## Results
 
-### Original model
+### First model (`code/04-spatial-regression.R`)
 
 The residuals of the linear model are strongly spatially autocorrelated (Moran's *I* = 0.72), so a spatial model is needed. The SLX model does not help (0.73). The spatial error model has the lowest AIC of the models in `code/04-spatial-regression.R`.
 
@@ -113,13 +117,13 @@ Run the scripts in order from the repository root:
    `code/04b-spatial-model-checks.R` runs the sensitivity checks and takes about 10 minutes.
 5. `code/05-plots.R`
 
-To render the full narrative with code, run `quarto render docs/report.qmd`. The coefficient tables are in `code/06-tables.qmd`.
+To render the full narrative with code, run `quarto render docs/report.qmd`.
 
 ## Repository layout
 
 ```
 code/      numbered analysis scripts
-data/      census tracts, Sentinel-5P rasters, merged analysis table
+data/      census tracts, Sentinel-5P rasters, merged analysis table, model comparison tables
 figures/   maps and diagnostic plots
 docs/      Quarto report and bibliography
 ```

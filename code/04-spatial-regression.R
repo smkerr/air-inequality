@@ -4,7 +4,9 @@
 # ==============================================================================
 
 
-# !!! If spatial autocorrelation persists after having used a spatial regression model, your model is not well formulated
+# Original analysis. Its binary-style, 100-neighbor weights make the spatial lag
+# model fail and inflate the apparent demographic effects. See
+# 04b-spatial-model-checks.R for the sensitivity checks that replace its conclusions.
 
 
 # Setup ------------------------------------------------------------------------
@@ -113,7 +115,7 @@ ggplot(res, aes(x = residuals, y = lagged_residuals)) +
   scale_x_continuous(labels = label_number(), breaks = pretty_breaks()) +
   scale_y_continuous(labels = label_number(), breaks = pretty_breaks()) +
   theme_void() 
-#> The Moran’s I test statistic is strong and positive (0.92) and is statistically significant.
+#> The Moran’s I test statistic is strong and positive (0.72) and is statistically significant.
 
 ggsave(here("figures/spatial-autocorrelation-los-angeles-air-quality.png"), height = 5, width = 5, dpi = 300)
 

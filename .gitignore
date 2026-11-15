@@ -1,0 +1,22 @@
+# Credentials
+api-keys/
+.Renviron
+.env
+
+# R
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# Quarto / rendered output
+.quarto/
+docs/*_files/
+docs/*.html
+
+# Python
+__pycache__/
+.venv/
+
+# OS
+.DS_Store

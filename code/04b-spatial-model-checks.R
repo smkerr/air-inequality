@@ -129,9 +129,18 @@ write.csv(results, here("data/output/spatial-model-comparison.csv"), row.names =
 
 
 # Lagrange multiplier tests and richer models (best weights, with distance) ----
+# spdep renamed lm.LMtests to lm.RStests (same tests, new names), so use whichever exists
+spatial_lm_tests <- function(model, lw) {
+  if (exists("lm.RStests", mode = "function")) {
+    lm.RStests(model, lw, test = c("RSerr", "RSlag", "adjRSerr", "adjRSlag"))
+  } else {
+    lm.LMtests(model, lw, test = c("LMerr", "LMlag", "RLMerr", "RLMlag"))
+  }
+}
+
 lw_best <- weights[["k=8, row-standardized"]]
 f_best <- formulas[["with_distance"]]
-print(lm.LMtests(lm(f_best, data = df), lw_best, test = c("LMerr", "LMlag", "RLMerr", "RLMlag")))
+print(spatial_lm_tests(lm(f_best, data = df), lw_best))
 
 ctrl_best <- list(pre_eig = eigenw(lw_best, quiet = TRUE))
 models <- list(

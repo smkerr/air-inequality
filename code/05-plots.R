@@ -9,12 +9,11 @@
 pacman::p_load(
   dplyr,       # wrangle data
   ggplot2,     # plots
+  cowplot,     # combine plots
   here,        # file paths
-  mapview,     # interactive maps
   scales,      # plot scales
   sf,          # simple features
-  terra,       # raster data
-  tmap         # thematic maps
+  terra        # raster data
 )
 
 # Load pollution data
@@ -122,9 +121,6 @@ p2 <- ggplot() +
 ggsave(here("figures/no2-raster-week.png"), bg = "white")
 
 
-###
-tm_shape(df) + tm_polygons(fill = "avg_air_qual") + tm_basemap(server = providers$Esri.WorldImagery)
-
 # Map of vector data superimposed over raster data
 rast_df <- as.data.frame(air_qual, xy = TRUE)
 vect_df <- la_county |> st_boundary()
@@ -188,7 +184,6 @@ p4 <- la_county |>
 ggsave(here("figures/no2-by-census-tract.png"), bg = "white")
 
 # Combine maps into single plot
-library(cowplot)
 top_row <- plot_grid(
   p1, p2, p3, 
   nrow = 1,
@@ -206,7 +201,7 @@ final_plot <- plot_grid(
 # Add title, subtitle, and caption
 title <- draw_label("Los Angeles's Air Quality", fontface = 'bold', size = 22)
 subtitle <- draw_label("Average NO2 levels in July 2023", size = 15)
-caption <- draw_label("Sources: Copernicus Sentinel Hub, US Census Bureau", size = 12)
+caption <- draw_label("Sources: ESA Copernicus Sentinel-5P, U.S. Census Bureau", size = 12)
 
 # Combine the title, subtitle, the plots, and the caption
 final_plot_with_labels <- plot_grid(
@@ -225,32 +220,3 @@ ggsave(
   final_plot_with_labels, 
   width = 10, height = 8, dpi = 300, bg = "white"
   )
-
-###
-library(patchwork)
-(p1 | p2 | p3) /
-  p4 +
-  plot_layout(heights = c(1, 3)) +
-  plot_annotation(
-    title = 'Los Angeles\'s Air Quality',
-    subtitle = 'Average NO2 levels in July 2023',
-    caption = 'Sources: Copernicus Sentinel Hub, US Census Bureau'
-  )
-
-### 
-library(gridExtra)
-grid.arrange(
-  grobs = list(top_row, p4),
-  ncol = 1,
-  heights = c(1, 3)
-)
-
-###
-library(ggpubr)
-ggarrange(
-  p1, p2, p3,
-  p4,
-  ncol = 1, nrow = 2,
-  #labels = c("A", "B", "C", "D"),
-  heights = c(1, 3)
-)

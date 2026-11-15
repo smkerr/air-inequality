@@ -2,6 +2,10 @@
 
 **Do neighborhoods with different demographics and incomes breathe different air?** This project combines satellite pollution data with U.S. Census data for 2,334 census tracts in Los Angeles County and tests the link with spatial regression.
 
+![Los Angeles skyline under a smog layer, seen from the Hollywood Freeway](figures/los-angeles-smog-skyline.jpg)
+
+*Downtown Los Angeles under its smog layer. Photo: ["Hollywood Freeway 101"](https://commons.wikimedia.org/wiki/File:Hollywood_Freeway_101_%2829751413541%29.jpg) by Prayitno, [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/), via Wikimedia Commons. Resized from the original.*
+
 ![Average NO2 by census tract, Los Angeles County, July 2023](figures/no2-by-census-tract.png)
 
 *Average tropospheric NO₂ per census tract, July 2023 (Sentinel-5P). Pollution concentrates in the central and eastern part of the county.*

@@ -12,7 +12,7 @@
 
 ## What this project shows
 
-| Skill | Where |
+| Step | File |
 |---|---|
 | Pulling census data and boundaries through an API | `code/01-get-census-data.R` (`tidycensus`, `tigris`) |
 | Requesting and processing satellite rasters | `code/02-get-no2-data.py` (Sentinel Hub API, custom evalscript) |
@@ -99,4 +99,4 @@ docs/      Quarto report and bibliography
 
 ---
 
-*This analysis began as a final project for Geospatial Analysis for Data Science at the Hertie School (spring 2024). Code is MIT licensed. Census and Copernicus data are public and subject to their providers' terms.*
+*This analysis began as a final project for Geospatial Analysis taught by Alexandra Kapp at the Hertie School (spring 2024). Code is MIT licensed. Census and Copernicus data are public and subject to their providers' terms.*

@@ -171,9 +171,19 @@ summary(error_model, Nagelkerke = TRUE)
 moran.test(error_model$residuals, wts)
 
 # Evaluate best model ==========================================================
+# spdep renamed lm.LMtests to lm.RStests (same tests, new names), so use whichever exists
+spatial_lm_tests <- function(model, lw) {
+  if (exists("lm.RStests", mode = "function")) {
+    lm.RStests(model, lw, test = c("RSerr", "RSlag", "adjRSerr", "adjRSlag"))
+  } else {
+    lm.LMtests(model, lw, test = c("LMerr", "LMlag", "RLMerr", "RLMlag"))
+  }
+}
+
 # Lagrange multiplier tests for spatial error versus spatial lag dependence.
 # If both plain tests are significant (p < .05), compare the adjusted versions
-# (RLMerr, RLMlag).
-lm.LMtests(model1, wts, test = c("LMerr", "LMlag", "RLMerr", "RLMlag"))
+# (adjRSerr, adjRSlag). The row-standardization warning is expected here, because
+# these weights are deliberately left unnormalized in this original analysis.
+spatial_lm_tests(model1, wts)
 
 AIC(model1, error_model)

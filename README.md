@@ -71,7 +71,7 @@ The residual autocorrelation of 0.47 turned out to come mostly from how the mode
 | 8 neighbors, row-standardized | 0.89 | -0.005 | 0.994 |
 | Queen contiguity, row-standardized | 0.89 | -0.29 | 0.997 |
 
-**2. The error term absorbs nearly everything.** λ is about 0.99 under every weights choice, so the model treats the NO₂ surface as almost entirely spatial. Nagelkerke R² of 0.99 reflects that, not explanatory power. Queen contiguity overcorrects (filtered Moran's *I* of -0.29).
+**2. The error term absorbs nearly everything.** λ is about 0.99 under every weights choice, so the model treats the NO₂ surface as almost entirely spatial. Nagelkerke R² of 0.99 reflects that, not explanatory power. Queen contiguity overcorrects (filtered Moran's *I* of -0.29), and it leaves some island tracts without neighbors (R warns of four disconnected sub-graphs).
 
 **3. Location matters most.** Adding distance to downtown Los Angeles cuts the linear model's AIC from 10,633 to 9,048 and the spatial error model's (8 neighbors) from 875 to 443. Spatial Durbin error has the lowest AIC (338). Lagrange multiplier tests favor an error model over a lag model (adjusted LM statistics of 965 for error and 464 for lag).
 

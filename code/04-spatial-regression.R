@@ -132,23 +132,31 @@ moran.test(slx_model$residuals, wts)
 #> As Moran’s I still shows significant autocorrelation, we should assume that we have not yet captured the spatial dependence sufficiently with our model.
 
 ## Spatial lag model -----------------------------------------------------------
-lag_model <- lagsarlm(
-  formula = formula,
-  data = df,
-  listw = wts, # taking the same weights as before
-  zero.policy = TRUE,
-  tol.solve = 1e-10
+# With these unnormalized, 100-neighbor weights the model's information matrix
+# is singular, so the fit fails. The script carries on so the error model below
+# still runs. 04b-spatial-model-checks.R fits the lag model with
+# row-standardized weights.
+lag_model <- tryCatch(
+  lagsarlm(
+    formula = formula,
+    data = df,
+    listw = wts, # taking the same weights as before
+    zero.policy = TRUE,
+    tol.solve = 1e-10
+  ),
+  error = function(e) {
+    message("Spatial lag model failed: ", conditionMessage(e))
+    NULL
+  }
 )
 
-summary(lag_model, Nagelkerke = TRUE)
-
-imp <- impacts(lag_model, listw = wts, R = 100) # compute impacts
-imp
-
-#To print the p-values
-summary(imp, zstats = TRUE)$pzmat
-
-moran.test(lag_model$residuals, wts)
+if (!is.null(lag_model)) {
+  print(summary(lag_model, Nagelkerke = TRUE))
+  imp <- impacts(lag_model, listw = wts, R = 100) # compute impacts
+  print(imp)
+  print(summary(imp, zstats = TRUE)$pzmat) # p-values
+  print(moran.test(lag_model$residuals, wts))
+}
 
 ## Spatial error model ---------------------------------------------------------
 error_model <- errorsarlm(
@@ -163,21 +171,9 @@ summary(error_model, Nagelkerke = TRUE)
 moran.test(error_model$residuals, wts)
 
 # Evaluate best model ==========================================================
-lm.RStests(
-  model1,
-  wts,
-  test = c("LMerr", "LMlag")
-  # LM error, LM lag
-)
+# Lagrange multiplier tests for spatial error versus spatial lag dependence.
+# If both plain tests are significant (p < .05), compare the adjusted versions
+# (RLMerr, RLMlag).
+lm.LMtests(model1, wts, test = c("LMerr", "LMlag", "RLMerr", "RLMlag"))
 
-#> If both resulting p-values are below the significance level (.05), this means we need to have a look at the robust version of these tests (Robust LM).
-lm.RStests(
-  model1,
-  wts,
-  test = c("RSerr", "RSlag")
-  # robust RS error, robust RS lag
-)
-
-AIC(model1, 
-    #lag_model, 
-    error_model)
+AIC(model1, error_model)

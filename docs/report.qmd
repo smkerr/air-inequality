@@ -593,6 +593,8 @@ Given that the spatial error model receives the lowest AIC, we consider it to be
 
 # Discussion
 
+> **Update:** later sensitivity checks (`code/04b-spatial-model-checks.R`, summarized in the repository README) show that the demographic associations below depend on the unnormalized spatial weights used here. With row-standardized weights and a distance-to-downtown term they are no longer significant. Read this section as exploratory.
+
 The spatial error model is assessed to be the model of best fit. This model estimates a positive and statistically significant relationship between air pollution and median home values (p-value \< 0.001), population density (p-value \< 0.001), the share of black residents (p-value \< 0.01), the share of Asian residents (p-value \< 0.001), and the share of Hispanic residents (p-value \< 0.001). A negative and statistically significant relationship between air pollution and poverty rate also exists at a significance level of $\alpha$ = 0.05 (p-value \< 0.05). Finally, the model did not find a statistically significant relationship between air pollution and the share of white residents (p-value = 0.324).
 
 The significant positive $\lambda$ value (0.029, p-value \< 0.001) confirms the presence of spatial autocorrelation, justifying the use of a spatial model over a standard linear regression model. Furthermore, a Nagelkerke pseudo-$R^2$ value of 0.65 suggests that the model explains a substantial portion of the variance in air quality. These findings reveal significant correlations between socioeconomic as well as demographic factors and air pollution levels across Los Angeles County, underscoring the interconnected nature of social inequities and environmental hazards.

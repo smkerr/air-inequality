@@ -19,16 +19,15 @@ pacman::p_load(
   scales,      # plot scales
   sf,          # simple features
   spatialreg,  # spatial regression
-  spdep        # spatial dependency
+  spdep,       # spatial dependency
+  units        # unit conversion
 )
 
 # Load data
 df <- st_read(here("data/output/los-angeles-air-quality.shp")) |> 
   na.omit() |> # remove observations with missing data
   rename( # restore variable names
-    "total_pop" =  "ttl_ppl", 
-    "native_american" = "ntv_mrc",
-    "hi_pacific" = "h_pcfc_",
+    "total_pop" =  "totl_pp",
     "hispanic" = "hispanc",
     "poverty_status" = "pvrty_s",
     "median_household_income" = "mdn_hs_",
@@ -41,13 +40,11 @@ df <- st_read(here("data/output/los-angeles-air-quality.shp")) |>
     pop_density = as.numeric(set_units(total_pop / st_area(geometry), "1/km2")),
     pct_white = white / total_pop,
     pct_black = black / total_pop,
-    #pct_native_american = native_american / total_pop,
     pct_asian = asian / total_pop,
-    #pct_hi_pacific = hi_pacific / total_pop,
     pct_hispanic = hispanic / total_pop,
     poverty_rate = poverty_status / total_pop
   ) |> 
-  select(-total_pop, -white, -black, -native_american, -asian, -hi_pacific, -hispanic, -poverty_status) |> 
+  select(-total_pop, -white, -black, -asian, -hispanic, -poverty_status) |> 
   relocate(c(avg_air_qual, geometry), .after = everything())
 
 # Add IDs to rows

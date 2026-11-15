@@ -34,11 +34,9 @@ la_county <- st_read(here("data/census/los-angeles-census-tracts.shp"))
 df <- st_read(here("data/output/los-angeles-air-quality.shp")) |> 
   na.omit() |> # remove observations with missing data
   rename( # restore variable names
-    "total_pop" =  "ttl_ppl", ###  
+    "total_pop" =  "totl_pp",
     "income_per_cap" = "incm_p_" ,
     "pct_college" = "pct_cll",
-    "pop_density" = "pp_dnst",
-    #"pct_white" = "pct_wht",
     "avg_air_qual" = "avg_r_q"
   )
 

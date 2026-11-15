@@ -35,17 +35,13 @@ options(tigris_use_cache = TRUE)
 
 # Get US Census data -----------------------------------------------------------
 
-# TODO: Update variables ...
-
 # Define variables
 # Variable info here: https://api.census.gov/data/2022/acs/acs1/spp/variables.html
 vars <- c(
-  total_population = "B01003_001E",
+  total_pop = "B01003_001E",
   white = "B02001_002E",
   black = "B02001_003E",
-  native_american = "B02001_004E",
   asian = "B02001_005E",
-  hi_pacific_islander = "B02001_006E",
   hispanic = "B03002_012E",
   poverty_status = "B17001_002E",
   median_house_income = "B19013_001E",

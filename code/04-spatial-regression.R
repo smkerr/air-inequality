@@ -117,7 +117,7 @@ ggplot(res, aes(x = residuals, y = lagged_residuals)) +
   theme_void() 
 #> The Moran’s I test statistic is strong and positive (0.72) and is statistically significant.
 
-ggsave(here("figures/spatial-autocorrelation-los-angeles-air-quality.png"), height = 5, width = 5, dpi = 300)
+ggsave(here("figures/residuals-vs-lagged-residuals.png"), height = 5, width = 5, dpi = 300, bg = "white")
 
 # Spatial regression ===========================================================
 ## Spatially lagged X model ----------------------------------------------------

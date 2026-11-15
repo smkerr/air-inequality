@@ -8,7 +8,7 @@
 
 ![Average NO2 by census tract, Los Angeles County, July 2023](figures/no2-by-census-tract.png)
 
-*Average tropospheric NO₂ per census tract, July 2023 (Sentinel-5P). Pollution concentrates in the central and eastern part of the county.*
+*Average tropospheric NO₂ column density (mol/m²) per census tract, July 2023 (Sentinel-5P). Pollution concentrates in the central and eastern part of the county.*
 
 ## What this project shows
 
@@ -23,7 +23,7 @@
 
 ## Data
 
-- **NO₂:** Sentinel-5P TROPOMI, averaged over July 2023, requested through the Copernicus Data Space Ecosystem at 0.005° resolution.
+- **NO₂:** Sentinel-5P TROPOMI tropospheric NO₂ column density (mol/m²), averaged over July 2023, requested through the Copernicus Data Space Ecosystem at 0.005° resolution.
 - **Demographics and income:** U.S. Census Bureau 2018-2022 American Community Survey, tract level. Variables are population by race and ethnicity, poverty, median household income, income per capita, median home value and share of college graduates. Catalina and San Clemente islands are dropped, and tracts with missing values are removed, leaving 2,334.
 
 ## Method
@@ -58,7 +58,7 @@ Higher NO₂ goes with denser, higher-value tracts and with larger shares of Asi
 
 - **Spatial dependence remains.** Moran's *I* on the spatial error residuals is still 0.47, so the model does not fully capture the spatial structure. Treat the coefficients as descriptive. Candidates for a better fit include distance to downtown, road and freeway density, and a different weights matrix.
 - **One month, one pollutant.** July 2023 NO₂ is not an annual exposure measure. Seasonal wind and temperature shift where NO₂ sits.
-- **Satellite column, not ground exposure.** Sentinel-5P measures NO₂ through the atmosphere above each pixel. Sentinel Hub returns it in mol/m², and the original write-up labels it ppm, so read the units on the maps as relative levels. The sensor's native footprint is several kilometers, so the 0.005° grid is resampled and fine tract-to-tract differences are smoothed.
+- **Satellite column, not ground exposure.** Sentinel-5P measures NO₂ through the whole atmosphere above each pixel. Values are tropospheric column densities in mol/m², not ground-level concentrations. Tract values range from 2.3e-05 to 1.6e-04 mol/m² (median 8.3e-05, about 5e15 molecules/cm²), which is a normal range for the Los Angeles basin. Read as ppm, the same median would be 0.08 ppb, roughly a hundred times below typical surface NO₂ in the city. The sensor's native footprint is several kilometers, so the 0.005° grid is resampled and fine tract-to-tract differences are smoothed.
 - **Aggregation.** Tract averages say nothing about individuals (ecological fallacy), and large rural tracts in the north average over mostly empty land.
 - **Association, not cause.** The model contains no traffic, industry or land-use data, and the analysis covers Los Angeles County only.
 - **Smaller points.** Weights use `style = "B"` (binary-style, unnormalized) with 100 neighbors, which makes λ hard to compare across studies. Results were not tested for sensitivity to the choice of *k*.

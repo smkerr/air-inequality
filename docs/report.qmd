@@ -144,7 +144,7 @@ print(bbox)
 
 ## Air Pollution Data
 
-Nitrogen Dioxide ($NO^2$) is often produced by industrial activities and motor vehicle exhaust, with high concentrations being linked to respiratory problems [@whymeas]. As such, this analysis uses average $NO^2$ parts per million (ppm) as a proxy for air pollution. $NO^2$ data from July 2023 is sourced from the European Space Agency's (ESA) Sentinel-5P satellite [@sentinel].
+Nitrogen Dioxide ($NO^2$) is often produced by industrial activities and motor vehicle exhaust, with high concentrations being linked to respiratory problems [@whymeas]. As such, this analysis uses the average tropospheric $NO_2$ column density (mol/m²) as a proxy for air pollution. Note that this is a satellite measure of the whole air column, not a ground-level concentration in ppm. $NO^2$ data from July 2023 is sourced from the European Space Agency's (ESA) Sentinel-5P satellite [@sentinel].
 
 Before we can download the data, we must first configure our credentials for the Sentinel Hub through the [Copernicus Data Space Ecosystem](https://shapps.dataspace.copernicus.eu/dashboard/#/).
 
@@ -258,7 +258,7 @@ if not os.path.exists("../data/copernicus/response.tiff"):
 
 # Combine Data
 
-Next, both spatial datasets are combined and the average $NO^2$ ppm is calculated for each census tract. We use the coordinate reference system of the raster data in order to preserve its quality as best as possible.
+Next, both spatial datasets are combined and the average $NO_2$ column density (mol/m²) is calculated for each census tract. We use the coordinate reference system of the raster data in order to preserve its quality as best as possible.
 
 ```{r, warning=FALSE, message=FALSE}
 # Load pollution data
@@ -271,7 +271,7 @@ la_county <- st_read(here("data/census/los-angeles-census-tracts.shp"))
 # Align vector data CRS with raster data CRS
 la_county <- st_transform(la_county, crs = st_crs(air_qual))
 
-# Calculate average air quality (NO2 ppm) by neighborhood
+# Calculate average air quality (NO2 column density, mol/m2) by neighborhood
 avg_air_qual <- extract(air_qual, la_county, fun = mean, na.rm = TRUE) 
 
 # Append average air quality to vector data
@@ -355,7 +355,7 @@ p2 <- df_with_na |>
   labs(
     x = NULL,
     y = NULL,
-    fill = expression(NO[2]*" ppm"),
+    fill = expression(NO[2]*" (mol/"*m^2*")"),
   ) +
   theme_void() +
   theme(
@@ -384,7 +384,7 @@ ggplot(df, aes(x = avg_air_qual)) +
   labs(
     title = expression("Distribution of average "*NO[2]*" across census tracts"),
     subtitle = "Los Angeles County, July 2023",
-    x = "NO2 ppm",
+    x = "NO2 column density (mol/m²)",
     y = "Count",
     caption = "Data sources: ESA Copernicus Sentinel Hub, U.S. Census Bureau"
   ) +
@@ -597,6 +597,6 @@ The spatial error model is assessed to be the model of best fit. This model esti
 
 The significant positive $\lambda$ value (0.029, p-value \< 0.001) confirms the presence of spatial autocorrelation, justifying the use of a spatial model over a standard linear regression model. Furthermore, a Nagelkerke pseudo-$R^2$ value of 0.65 suggests that the model explains a substantial portion of the variance in air quality. These findings reveal significant correlations between socioeconomic as well as demographic factors and air pollution levels across Los Angeles County, underscoring the interconnected nature of social inequities and environmental hazards.
 
-This analysis has several limitations. First, the context is specific to Los Angeles County, with further research required to determine whether similar patterns exist in other major U.S. metropolitan areas. With the exception of population density, the models used in this analysis rely solely on socioeconomic and demographic variables. It does not take other factors that may contribute to air pollution into consideration such as traffic patterns. Furthermore, we use $NO^2$ ppm as a proxy for air pollution when it may be appropriate to examine other types of air pollution measures, including some combination of different measures. Additionally, this analysis only compares the performance of three types of models, namely linear regression, spatially lagged X linear regression, and spatial error regression. Future work could test the performance of more complex spatial models. It is also worth noting that $NO^2$ appears to be highly concentrated in areas near Downtown Los Angeles. As such, it may be appropriate to include a variable in the model that represents the distance between the center point of a given census tract from Downtown Los Angeles since this may explain a substantial portion of differences in air quality.
+This analysis has several limitations. First, the context is specific to Los Angeles County, with further research required to determine whether similar patterns exist in other major U.S. metropolitan areas. With the exception of population density, the models used in this analysis rely solely on socioeconomic and demographic variables. It does not take other factors that may contribute to air pollution into consideration such as traffic patterns. Furthermore, we use $NO_2$ column density as a proxy for air pollution when it may be appropriate to examine other types of air pollution measures, including some combination of different measures. Additionally, this analysis only compares the performance of three types of models, namely linear regression, spatially lagged X linear regression, and spatial error regression. Future work could test the performance of more complex spatial models. It is also worth noting that $NO^2$ appears to be highly concentrated in areas near Downtown Los Angeles. As such, it may be appropriate to include a variable in the model that represents the distance between the center point of a given census tract from Downtown Los Angeles since this may explain a substantial portion of differences in air quality.
 
 Future research should aim to validate these relationships and explore the mechanisms driving these associations, including the potential role of urban planning, industrial activity, and transportation patterns. Additionally, longitudinal studies could examine how these relationships evolve over time, especially in the context of policy interventions and urban development.

@@ -29,7 +29,7 @@ la_county <- st_read(here("data/census/los-angeles-census-tracts.shp"))
 # Align vector data CRS with raster data CRS
 la_county <- st_transform(la_county, crs = st_crs(air_qual))
 
-# Calculate average air quality (NO2 ppm) by neighborhood
+# Calculate average air quality (NO2 column density, mol/m2) by neighborhood
 avg_air_qual <- extract(air_qual, la_county, fun = mean, na.rm = TRUE) 
 
 # Append average air quality to vector data

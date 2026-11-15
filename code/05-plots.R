@@ -52,7 +52,7 @@ ggplot(df, aes(x = avg_air_qual)) +
   labs(
     #title = "Distribution of average NO2 amongst census tracts",
     #subtitle = "Los Angeles, Jan 2023",
-    x = NULL, #"NO2 ppm",
+    x = NULL, #"NO2 (mol/m2)",
     y = NULL #"Count"
   ) +
   theme_classic() 
@@ -79,7 +79,7 @@ p1 <- ggplot() +
     #subtitle = expression("Average "*NO[2]*" levels in July 2023"),
     x = NULL,
     y = NULL,
-    fill = NULL, #expression(NO[2]*" ppm"), 
+    fill = NULL, #expression(NO[2]*" (mol/m2)"), 
     caption = NULL #"sources: Copernicus Sentinel Hub, US Census Bureau"
   ) +
   theme_void() + 
@@ -110,7 +110,7 @@ p2 <- ggplot() +
     #subtitle = expression("Average "*NO[2]*" levels in July 2023"),
     x = NULL,
     y = NULL,
-    fill = NULL, #expression(NO[2]*" ppm"), 
+    fill = NULL, #expression(NO[2]*" (mol/m2)"), 
     caption = NULL #"sources: Copernicus Sentinel Hub, US Census Bureau"
   ) +
   theme_void() + 
@@ -145,7 +145,7 @@ p3 <- ggplot() +
     #subtitle = expression("Average "*NO[2]*" levels in July 2023"),
     x = NULL,
     y = NULL,
-    fill = NULL, # expression(NO[2]*" ppm"), 
+    fill = NULL, # expression(NO[2]*" (mol/m2)"), 
     caption = NULL #"sources: Copernicus Sentinel Hub, US Census Bureau"
   ) +
   theme_void() + 
@@ -177,7 +177,7 @@ p4 <- la_county |>
     subtitle = NULL, # expression("Average "*NO[2]*" levels in July 2023"),
     x = NULL,
     y = NULL,
-    fill = expression(NO[2]*" ppm"), 
+    fill = expression(NO[2]*" (mol/"*m^2*")"), 
     caption = NULL #"sources: Copernicus Sentinel Hub, US Census Bureau"
   ) +
   theme_void() + 
